@@ -1,0 +1,35 @@
+{
+  "name": "opencode-tab-status",
+  "version": "1.0.0",
+  "description": "Show OpenCode running status (status, model, tool, usage) in the Windows Terminal tab title via OSC escape sequences. Zero dependencies.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./status": "./src/status.js"
+  },
+  "files": [
+    "index.js",
+    "plugins/",
+    "src/"
+  ],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "terminal",
+    "windows-terminal",
+    "tab-title",
+    "status"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xwh5/opencode-tab-status.git"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
