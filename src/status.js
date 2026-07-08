@@ -42,7 +42,10 @@ export function resolveOptions(env = {}) {
     if (f.length) fields = f;
   }
   const notify = env.STATUS_TAB_NOTIFY === "1";
-  return { lang, emoji, fields, notify };
+  // icon-only: show just the status glyph in the tab, no "完成/思考" text.
+  // Default on (saves tab space). Set STATUS_TAB_ICON_ONLY=0 to show labels.
+  const iconOnly = env.STATUS_TAB_ICON_ONLY !== "0";
+  return { lang, emoji, fields, notify, iconOnly };
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +217,7 @@ export function createStatus(opts = resolveOptions()) {
     if (!opts.emoji) icon = "";
 
     const seg = {};
-    seg.status = `${icon}${label}`;
+    seg.status = opts.iconOnly && opts.emoji ? icon : `${icon}${label}`;
     seg.title = state.title ? clip(state.title, 28) : "";
     seg.model = state.model ? clip(state.model, 24) : "";
     seg.tool = state.phase === "tool" && state.tool ? clip(state.tool, 16) : "";

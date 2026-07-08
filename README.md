@@ -12,8 +12,11 @@ OpenCode works.
 Tab title layout (status first, then task, then details):
 
 ```
-<状态> · <标题> · <模型> · [<工具>] · <用量>
+<状态图标> · <标题> · <模型> · [<工具>] · <用量>
 ```
+
+By default the status is shown as **icon only** (e.g. ✅, 💭) to save tab
+space — no "完成/思考" text. Set `STATUS_TAB_ICON_ONLY=0` to show the labels.
 
 | Icon | Meaning            | When |
 |------|--------------------|------|
@@ -25,7 +28,7 @@ Tab title layout (status first, then task, then details):
 | ⚠️   | 错误 (error)       | session error |
 | 🗜️   | 压缩 (compacting)  | session compaction |
 
-Switching to an existing session shows its title + model (✅ 完成) instead of a
+Switching to an existing session shows its title + model (✅) instead of a
 blank idle. A transient idle between sub-steps (e.g. right after a tool like
 Edit/Wrote) does **not** flash "完成" — only a true end-of-turn does.
 
@@ -64,6 +67,7 @@ All configuration is via environment variables (zero-config by default):
 | Variable | Values | Default | Effect |
 |----------|--------|---------|--------|
 | `STATUS_TAB_LANG` | `zh` \| `en` | `zh` | status label language |
+| `STATUS_TAB_ICON_ONLY` | `0` | `1` (on) | icon-only status (default). Set `0` to also show 完成/思考 text |
 | `STATUS_TAB_NO_EMOJI` | `1` | off | use plain text instead of emoji icons |
 | `STATUS_TAB_FIELDS` | `status,title,model,tool,usage` | all | field order / which to show |
 | `STATUS_TAB_NOTIFY` | `1` | off | ring the terminal bell on done/error (error also flashes) |

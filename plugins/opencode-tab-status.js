@@ -8,6 +8,7 @@
 //   STATUS_TAB_LANG=en|zh        language for status labels (default zh)
 //   STATUS_TAB_NO_EMOJI=1        use plain text instead of emoji icons
 //   STATUS_TAB_FIELDS=status,title,model,tool,usage   field order
+//   STATUS_TAB_ICON_ONLY=0       show "完成/思考" text too (default: icon only)
 //   STATUS_TAB_NOTIFY=1          ring the terminal bell on done/error
 //
 // Install (npm): add "opencode-tab-status" to opencode.json "plugin".
@@ -40,7 +41,10 @@ function resolveOptions(env = {}) {
     if (f.length) fields = f;
   }
   const notify = env.STATUS_TAB_NOTIFY === "1";
-  return { lang, emoji, fields, notify };
+  // icon-only: show just the status glyph in the tab, no "完成/思考" text.
+  // Default on (saves tab space). Set STATUS_TAB_ICON_ONLY=0 to show labels.
+  const iconOnly = env.STATUS_TAB_ICON_ONLY !== "0";
+  return { lang, emoji, fields, notify, iconOnly };
 }
 
 function createStatus(opts = resolveOptions()) {
@@ -142,7 +146,7 @@ function createStatus(opts = resolveOptions()) {
     else if (state.phase === "idle" && (state.title || state.model)) { icon = ICONS.done; label = labels.done; }
     if (!opts.emoji) icon = "";
     const seg = {
-      status: `${icon}${label}`,
+      status: opts.iconOnly && opts.emoji ? icon : `${icon}${label}`,
       title: state.title ? clip(state.title, 28) : "",
       model: state.model ? clip(state.model, 24) : "",
       tool: state.phase === "tool" && state.tool ? clip(state.tool, 16) : "",
