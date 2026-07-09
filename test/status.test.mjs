@@ -6,7 +6,7 @@ import { createStatus, resolveOptions } from "../src/status.js";
 // `properties` wrapper like the real opencode event shape.
 const ev = (type, properties = {}) => ({ type, properties });
 
-test("initial state with a session shows ✅ (icon only), not blank", () => {
+test("loading a session shows ✅ at rest (idle == done), and stays after a turn", () => {
   const s = createStatus(resolveOptions({}));
   s.apply(ev("session.created", { info: { title: "my task", model: { id: "m", providerID: "p" } } }));
   const t = s.title();
@@ -14,6 +14,44 @@ test("initial state with a session shows ✅ (icon only), not blank", () => {
   assert.doesNotMatch(t, /完成/);
   assert.match(t, /my task/);
   assert.match(t, /p\/m/);
+  // still ✅ after a turn ends
+  s.apply(ev("session.status", { status: { type: "busy" } }));
+  assert.match(s.title(), /💭/);
+  s.apply(ev("session.idle"));
+  assert.match(s.title(), /✅/);
+});
+
+test("during a turn shows 💭 (never ✅); at rest with a session shows ✅", () => {
+  const s = createStatus(resolveOptions({}));
+  s.apply(ev("session.created", { info: { title: "t", model: { id: "m", providerID: "p" } } }));
+  // at rest with a loaded session -> done (idle == done)
+  assert.match(s.title(), /✅/);
+  // start a turn
+  s.apply(ev("session.status", { status: { type: "busy" } }));
+  assert.match(s.title(), /💭/);
+  // a spurious session.status: idle mid-turn (inTurn still true) must NOT show done
+  s.apply(ev("session.status", { status: { type: "idle" } }));
+  assert.doesNotMatch(s.title(), /✅/);
+  assert.match(s.title(), /💭/);
+  // turn really ends
+  const sig = s.apply(ev("session.idle"));
+  assert.equal(sig, "done");
+  assert.match(s.title(), /✅/);
+});
+
+test("turn-start idle must NOT ring the done bell (notify only on real session.idle)", () => {
+  const s = createStatus(resolveOptions({ STATUS_TAB_NOTIFY: "1" }));
+  s.apply(ev("session.created", { info: { title: "t", model: { id: "m", providerID: "p" } } }));
+  // busy -> thinking, then a spurious idle (inTurn now false) — must not notify
+  s.apply(ev("session.status", { status: { type: "busy" } }));
+  const sigSpurious = s.apply(ev("session.status", { status: { type: "idle" } }));
+  assert.equal(sigSpurious, null);
+  // real end of turn rings the bell exactly once
+  const sigDone = s.apply(ev("session.idle"));
+  assert.equal(sigDone, "done");
+  // a second session.idle without a new turn must not re-ring
+  const sigAgain = s.apply(ev("session.idle"));
+  assert.equal(sigAgain, null);
 });
 
 test("empty start (no session) shows 🌱", () => {
@@ -125,6 +163,42 @@ test("english + no-emoji config", () => {
   assert.match(t, /thinking/);
   assert.doesNotMatch(t, /💭/);
   assert.doesNotMatch(t, /✅/);
+});
+
+test("switching into a session resets transient state and shows ✅ (not stale)", () => {
+  const s = createStatus(resolveOptions({}));
+  // session A: mid-turn, thinking
+  s.apply(ev("session.created", { info: { id: "A", title: "task A", model: { id: "m", providerID: "p" } } }));
+  s.apply(ev("session.status", { status: { type: "busy", sessionID: "A" } }));
+  assert.match(s.title(), /💭/);
+  // user switches to session B (different id) — transient state must reset
+  s.apply(ev("session.created", { info: { id: "B", title: "task B", model: { id: "m", providerID: "p" } } }));
+  // B at rest -> done (✅), not a stale "task A thinking"
+  const t = s.title();
+  assert.match(t, /✅/);
+  assert.doesNotMatch(t, /💭/);
+  assert.match(t, /task B/);
+  // now interacting in B -> thinking
+  s.apply(ev("session.status", { status: { type: "busy", sessionID: "B" } }));
+  assert.match(s.title(), /💭/);
+  // B's turn ends for real -> done
+  s.apply(ev("session.idle"));
+  assert.match(s.title(), /✅/);
+});
+
+test("tool waiting for confirmation keeps ⏳ (not clobbered by tool hook)", () => {
+  const s = createStatus(resolveOptions({}));
+  s.apply(ev("session.status", { status: { type: "busy" } }));
+  // a tool needs the user's confirmation
+  s.apply(ev("permission.asked"));
+  assert.match(s.title(), /⏳/);
+  // simulate tool.execute.before firing (plugin clears inTurn/phase/tool but
+  // must NOT clear `waiting`) — still waiting for the user
+  s.apply(ev("message.part.updated", { part: { type: "tool", tool: "bash", state: { status: "running" } } }));
+  assert.match(s.title(), /⏳/);
+  // user replies -> back to tool/thinking
+  s.apply(ev("permission.replied"));
+  assert.match(s.title(), /🔧/);
 });
 
 test("custom field order via STATUS_TAB_FIELDS", () => {

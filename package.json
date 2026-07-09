@@ -1,6 +1,6 @@
 {
   "name": "opencode-tab-status",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Show OpenCode running status (status, model, tool, usage) in the Windows Terminal tab title via OSC escape sequences. Zero dependencies.",
   "type": "module",
   "main": "index.js",

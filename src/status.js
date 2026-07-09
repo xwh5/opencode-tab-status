@@ -55,22 +55,22 @@ export function createStatus(opts = resolveOptions()) {
   const labels = LABELS[opts.lang] || LABELS.zh;
 
   const state = {
-    phase: "idle", // idle|thinking|tool|compact|retry|error
-    inTurn: false, // true while a turn is in progress (busy, incl. gaps between
-    // tool calls). Stays true after a tool finishes until the session truly
-    // returns to the user, so transient idles between sub-steps don't flash "完成".
-    waiting: false, // true while opencode is paused waiting on the user
+    phase: "idle", // idle|thinking|tool|compact|error
+    inTurn: false, // true while a turn is actively running (busy / tool / step).
+    // Stays true through gaps between sub-steps so transient idles don't flash.
+    waiting: false, // true while paused for the user (permission / question / prompt)
+    pendingQuestion: false, // a `question` tool is awaiting the user's answer
     model: "",
     tool: "",
     title: "",
     tokens: "",
     cost: "",
+    sessionID: "", // active session id; a change means the user switched session
+    hasSession: false, // a session is loaded — at rest it shows ✅ done (idle == done)
   };
 
   // Track phase transitions so the entrypoint can fire notifications only on
   // real changes (完成 / 错误), not on every event.
-  let lastPhase = state.phase;
-
   const clip = (s, n) => {
     if (!s) return s;
     return s.length > n ? s.slice(0, n - 1) + "…" : s;
@@ -101,8 +101,11 @@ export function createStatus(opts = resolveOptions()) {
 
   const onStep = (part, starting) => {
     if (!part) return;
-    if (starting && !state.inTurn && state.phase !== "tool") {
-      state.phase = "thinking";
+    if (starting) {
+      if (!state.inTurn && state.phase !== "tool") {
+        state.phase = "thinking";
+      }
+      state.inTurn = true;
     }
   };
 
@@ -110,6 +113,21 @@ export function createStatus(opts = resolveOptions()) {
   // entrypoint knows when to fire a user notification.
   const apply = (event) => {
     if (!event) return null;
+    // Detect a session switch: when the active session id changes, reset the
+    // transient turn state so the tab shows "done" for the newly entered
+    // session instead of leaking the previous session's busy/waiting/tool state.
+    const evSessionID =
+      event.properties?.info?.id ||
+      event.properties?.sessionID ||
+      event.properties?.status?.sessionID;
+    if (evSessionID && evSessionID !== state.sessionID) {
+      state.sessionID = evSessionID;
+      state.inTurn = false;
+      state.waiting = false;
+      state.pendingQuestion = false;
+      state.tool = "";
+      state.phase = "idle";
+    }
     let notify = null;
     switch (event.type) {
       case "session.status": {
@@ -122,7 +140,8 @@ export function createStatus(opts = resolveOptions()) {
         } else if (t === "idle") {
           // Ignore transient idles that happen mid-turn (e.g. right after a
           // tool finishes, before the next thinking step). Only end the turn
-          // when inTurn is already false.
+          // when inTurn is already false. A spurious idle at turn START must
+          // NOT show "done" — only a real session.idle does that.
           if (!state.inTurn) {
             state.phase = "idle";
             state.tool = "";
@@ -130,14 +149,21 @@ export function createStatus(opts = resolveOptions()) {
         }
         break;
       }
-      case "session.idle":
-        // Dedicated "session returned to user" event — the turn is done.
+      case "session.idle": {
+        // Dedicated "session returned to user" event — the turn is truly done.
+        const wasActive = state.inTurn;
         state.inTurn = false;
         state.phase = "idle";
         state.tool = "";
+        state.waiting = false;
+        // Ring the bell only when a turn was actually running, so idle pings
+        // (inTurn already false) don't re-ring.
+        if (wasActive) notify = "done";
         break;
+      }
       case "session.error":
         state.phase = "error";
+        notify = "error";
         break;
       case "session.compacting":
       case "experimental.session.compacting":
@@ -166,6 +192,7 @@ export function createStatus(opts = resolveOptions()) {
         if (info?.tokens) {
           state.tokens = `${info.tokens.input ?? 0}/${info.tokens.output ?? 0}`;
         }
+        state.hasSession = true;
         break;
       }
       case "message.part.updated": {
@@ -195,11 +222,6 @@ export function createStatus(opts = resolveOptions()) {
         break;
     }
 
-    if (state.phase !== lastPhase) {
-      if (state.phase === "idle" && (state.title || state.model)) notify = "done";
-      else if (state.phase === "error") notify = "error";
-      lastPhase = state.phase;
-    }
     return notify;
   };
 
@@ -210,7 +232,20 @@ export function createStatus(opts = resolveOptions()) {
     if (state.waiting) {
       icon = ICONS.retry;
       label = labels.retry;
-    } else if (state.phase === "idle" && (state.title || state.model)) {
+    } else if (state.phase === "error") {
+      icon = ICONS.error;
+      label = labels.error;
+    } else if (state.phase === "compact") {
+      icon = ICONS.compact;
+      label = labels.compact;
+    } else if (state.phase === "tool" && state.tool) {
+      icon = ICONS.tool;
+      label = labels.tool;
+    } else if (state.phase === "thinking" || state.inTurn) {
+      icon = ICONS.thinking;
+      label = labels.thinking;
+    } else if (state.hasSession) {
+      // At rest with a loaded session: idle == done (sticky).
       icon = ICONS.done;
       label = labels.done;
     }
